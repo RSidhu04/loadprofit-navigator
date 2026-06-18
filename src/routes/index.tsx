@@ -2,10 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Search, TrendingUp, Truck } from "lucide-react";
+import { MapPin, Search, Sparkles, TrendingUp, Truck } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { useCosts } from "@/contexts/costs-context";
-import { findBestLoads, listOriginCities } from "@/lib/loads.functions";
+import { findBestLoads, findCandidates, listOriginCities } from "@/lib/loads.functions";
+// @ts-expect-error - agents.js is a plain JS module
+import { orchestrator } from "@/lib/agents";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
