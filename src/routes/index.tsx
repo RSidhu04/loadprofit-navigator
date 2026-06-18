@@ -414,7 +414,7 @@ const AGENT_META: Record<AgentKey, { title: string; role: string; icon: typeof D
 };
 
 function AiPanel({
-  agents, started, error, canRun, running, onRun,
+  agents, started, error, canRun, running, onRun, query, onQueryChange,
 }: {
   agents: Record<AgentKey, AgentState>;
   started: boolean;
@@ -422,6 +422,8 @@ function AiPanel({
   canRun: boolean;
   running: boolean;
   onRun: () => void;
+  query: string;
+  onQueryChange: (v: string) => void;
 }) {
   return (
     <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
@@ -434,7 +436,7 @@ function AiPanel({
             Multi-agent recommendation
           </h3>
           <p className="text-sm text-muted-foreground">
-            Cost · Market · Risk specialists review the top 15 candidates within 300 mi, then the
+            The Router decides which specialists (Cost · Market · Risk) to invoke, then the
             Orchestrator picks the single best load.
           </p>
         </div>
@@ -448,6 +450,19 @@ function AiPanel({
         </button>
       </div>
 
+      <label className="mt-4 flex flex-col gap-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Your query
+        </span>
+        <textarea
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          rows={2}
+          placeholder="e.g. Find the best load, or 'what if fuel rises 10%', or 'loads ending in strong markets'"
+          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+      </label>
+
       {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
           {error}
@@ -456,6 +471,7 @@ function AiPanel({
 
       {started && (
         <div className="mt-5 space-y-4">
+          <AgentCard agentKey="router" state={agents.router} />
           <div className="grid gap-3 md:grid-cols-3">
             <AgentCard agentKey="cost" state={agents.cost} />
             <AgentCard agentKey="market" state={agents.market} />
