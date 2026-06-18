@@ -425,20 +425,20 @@ function AiPanel({
   query: string;
   onQueryChange: (v: string) => void;
 }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const specialistKeys: AgentKey[] = ["cost", "market", "risk"];
+  const answer = agents.final;
+
   return (
     <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-500">
-            <Sparkles className="h-3.5 w-3.5" /> Agent activity
+            <Sparkles className="h-3.5 w-3.5" /> Ask the dispatcher
           </div>
           <h3 className="mt-1 font-display text-lg font-semibold tracking-tight">
-            Multi-agent recommendation
+            Get a recommendation
           </h3>
-          <p className="text-sm text-muted-foreground">
-            The Router decides which specialists (Cost · Market · Risk) to invoke, then the
-            Orchestrator picks the single best load.
-          </p>
         </div>
         <button
           className="inline-flex items-center gap-2 h-11 px-5 rounded-md bg-amber-500 text-black text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
@@ -446,13 +446,13 @@ function AiPanel({
           disabled={!canRun}
         >
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {running ? "Agents thinking…" : "Find Best Load"}
+          {running ? "Thinking…" : "Ask"}
         </button>
       </div>
 
       <label className="mt-4 flex flex-col gap-1.5">
         <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Your query
+          Your question
         </span>
         <textarea
           value={query}
@@ -471,84 +471,102 @@ function AiPanel({
 
       {started && (
         <div className="mt-5 space-y-4">
-          <AgentCard agentKey="router" state={agents.router} />
-          <div className="grid gap-3 md:grid-cols-3">
-            <AgentCard agentKey="cost" state={agents.cost} />
-            <AgentCard agentKey="market" state={agents.market} />
-            <AgentCard agentKey="risk" state={agents.risk} />
+          {/* Routing reason as a single muted line */}
+          {agents.router.status !== "idle" && (
+            <div className="flex items-start gap-2 text-xs text-muted-foreground">
+              <Workflow className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <span>
+                {agents.router.status === "running"
+                  ? "Routing your question to the right specialists…"
+                  : agents.router.output || "Routed to specialists."}
+              </span>
+            </div>
+          )}
+
+          {/* Compact agent status chips */}
+          <div className="flex flex-wrap gap-2">
+            {specialistKeys.map((key) => (
+              <AgentChip key={key} agentKey={key} state={agents[key]} />
+            ))}
           </div>
-          <AgentCard agentKey="final" state={agents.final} highlight />
+
+          {/* Hero answer card */}
+          <div className="rounded-xl border border-amber-500/40 bg-gradient-to-br from-amber-500/10 via-card to-card p-5 shadow-sm">
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-500">
+              Answer
+            </div>
+            {answer.status === "running" || answer.status === "idle" ? (
+              <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Preparing your recommendation…
+              </div>
+            ) : answer.output ? (
+              <div className="mt-3">
+                <AgentMarkdown text={answer.output} highlight />
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-muted-foreground">No answer yet.</div>
+            )}
+          </div>
+
+          {/* Collapsible details */}
+          {specialistKeys.some((k) => agents[k].status === "done") && (
+            <div>
+              <button
+                onClick={() => setShowDetails((v) => !v)}
+                className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4"
+              >
+                {showDetails ? "Hide agent details" : "Show agent details"}
+              </button>
+              {showDetails && (
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  {specialistKeys.map((key) =>
+                    agents[key].status === "done" && agents[key].output ? (
+                      <div key={key} className="rounded-lg border border-border bg-card/60 p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                          {(() => {
+                            const Icon = AGENT_META[key].icon;
+                            return <Icon className="h-3.5 w-3.5" />;
+                          })()}
+                          {AGENT_META[key].title}
+                        </div>
+                        <div className="max-h-64 overflow-auto">
+                          <AgentMarkdown text={agents[key].output!} />
+                        </div>
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function AgentCard({
-  agentKey, state, highlight,
-}: {
-  agentKey: AgentKey;
-  state: AgentState;
-  highlight?: boolean;
-}) {
+function AgentChip({ agentKey, state }: { agentKey: AgentKey; state: AgentState }) {
   const meta = AGENT_META[agentKey];
   const Icon = meta.icon;
-  const border = highlight
-    ? "border-amber-500/60 bg-gradient-to-br from-amber-500/10 via-card to-card shadow-lg shadow-amber-500/5"
-    : state.status === "done"
-      ? "border-emerald-500/30 bg-card"
+  const tone =
+    state.status === "done"
+      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-500"
       : state.status === "running"
-        ? "border-primary/40 bg-primary/5"
-        : "border-dashed border-border bg-card/40 opacity-70";
-
+        ? "border-primary/40 bg-primary/10 text-primary"
+        : state.status === "skipped"
+          ? "border-border bg-muted/30 text-muted-foreground opacity-60"
+          : state.status === "error"
+            ? "border-destructive/40 bg-destructive/10 text-destructive"
+            : "border-border bg-card text-muted-foreground";
   return (
-    <div className={`rounded-xl border ${border} p-4 transition-all`}>
-      <div className="flex items-start gap-3">
-        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${highlight ? "bg-amber-500/15 text-amber-500" : state.status === "done" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted/40 text-foreground"}`}>
-          <Icon className="h-4.5 w-4.5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              {highlight && (
-                <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-500">
-                  Final verdict
-                </div>
-              )}
-              <div className={`font-display font-semibold tracking-tight ${highlight ? "text-base text-foreground" : "text-sm"}`}>
-                {meta.title}
-              </div>
-              <div className="text-xs text-muted-foreground">{meta.role}</div>
-            </div>
-            <StatusPill status={state.status} />
-          </div>
-        </div>
-      </div>
-
-      {state.status === "running" && (
-        <div className="mt-4 space-y-2">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/60" />
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Working…
-          </div>
-        </div>
-      )}
-
-      {state.status === "skipped" && (
-        <div className="mt-3 text-xs italic text-muted-foreground">
-          {state.output || "Not needed for this query."}
-        </div>
-      )}
-
-      {state.status === "done" && state.output && (
-        <div className={`mt-4 rounded-lg border border-border/60 bg-background/40 p-3 ${highlight ? "" : "max-h-72 overflow-auto"}`}>
-          <AgentMarkdown text={state.output} highlight={highlight} />
-        </div>
-      )}
-    </div>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${tone}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {meta.title}
+      {state.status === "running" && <Loader2 className="h-3 w-3 animate-spin" />}
+      {state.status === "done" && <CheckCircle2 className="h-3 w-3" />}
+      {state.status === "skipped" && <span className="text-[10px] uppercase tracking-wider">skipped</span>}
+    </span>
   );
 }
 
