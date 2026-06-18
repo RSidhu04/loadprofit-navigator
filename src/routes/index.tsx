@@ -630,6 +630,8 @@ function StatusPill({ status }: { status: AgentStatus }) {
     return <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-primary"><Loader2 className="h-3 w-3 animate-spin" />Running</span>;
   if (status === "done")
     return <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-emerald-500"><CheckCircle2 className="h-3 w-3" />Done</span>;
+  if (status === "skipped")
+    return <span className="rounded-md border border-border bg-muted/30 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">Skipped</span>;
   return <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-destructive">Error</span>;
 }
 
