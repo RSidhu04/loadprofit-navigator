@@ -129,23 +129,31 @@ function LoadFinder() {
         return;
       }
 
-      // Kick all three specialists at once; each updates its own card the moment it returns.
-      const markRunning = (k: AgentKey) =>
-        setAgents((s) => ({ ...s, [k]: { status: "running" } }));
-      const markDone = (k: AgentKey, output: string) =>
-        setAgents((s) => ({ ...s, [k]: { status: "done", output } }));
+      // Step 1 — routing is in-flight.
+      setAgents((s) => ({
+        ...s,
+        router: { status: "running" },
+        cost: { status: "running" },
+        market: { status: "running" },
+        risk: { status: "running" },
+        final: { status: "running" },
+      }));
 
-      markRunning("cost"); markRunning("market"); markRunning("risk");
+      const result = await orchestrator(query, candidates, selected, costs);
+      const used = new Set<string>(result.agentsUsed);
 
-      const costP = costAgent(candidates).then((t: string) => { markDone("cost", t); return t; });
-      const marketP = marketAgent(candidates).then((t: string) => { markDone("market", t); return t; });
-      const riskP = riskAgent(candidates).then((t: string) => { markDone("risk", t); return t; });
+      const statusFor = (key: "COST" | "MARKET" | "RISK"): AgentState =>
+        used.has(key)
+          ? { status: "done", output: result.findings[key] }
+          : { status: "skipped", output: "Not needed for this query." };
 
-      const [cost, market, risk] = await Promise.all([costP, marketP, riskP]);
-
-      markRunning("final");
-      const finalText = await finalAgent(candidates, selected.city, { cost, market, risk });
-      markDone("final", finalText);
+      setAgents({
+        router: { status: "done", output: result.routingReason || "Routed query to specialists." },
+        cost: statusFor("COST"),
+        market: statusFor("MARKET"),
+        risk: statusFor("RISK"),
+        final: { status: "done", output: result.finalRecommendation },
+      });
     } catch (err) {
       setAiError((err as Error).message);
     } finally {
