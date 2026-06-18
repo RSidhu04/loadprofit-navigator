@@ -442,10 +442,12 @@ function AiPanel({
       )}
 
       {started && (
-        <div className="mt-5 grid gap-3">
-          <AgentCard agentKey="cost" state={agents.cost} />
-          <AgentCard agentKey="market" state={agents.market} />
-          <AgentCard agentKey="risk" state={agents.risk} />
+        <div className="mt-5 space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <AgentCard agentKey="cost" state={agents.cost} />
+            <AgentCard agentKey="market" state={agents.market} />
+            <AgentCard agentKey="risk" state={agents.risk} />
+          </div>
           <AgentCard agentKey="final" state={agents.final} highlight />
         </div>
       )}
@@ -463,45 +465,134 @@ function AgentCard({
   const meta = AGENT_META[agentKey];
   const Icon = meta.icon;
   const border = highlight
-    ? "border-amber-500/60 bg-amber-500/5"
+    ? "border-amber-500/60 bg-gradient-to-br from-amber-500/10 via-card to-card shadow-lg shadow-amber-500/5"
     : state.status === "done"
-      ? "border-emerald-500/30 bg-card/60"
+      ? "border-emerald-500/30 bg-card"
       : state.status === "running"
         ? "border-primary/40 bg-primary/5"
-        : "border-border bg-card/40";
+        : "border-dashed border-border bg-card/40 opacity-70";
 
   return (
-    <div className={`rounded-lg border ${border} p-4 transition-colors`}>
-      <div className="flex items-center gap-2.5">
-        <div className={`flex h-8 w-8 items-center justify-center rounded-md ${highlight ? "bg-amber-500/15 text-amber-500" : "bg-muted/40 text-foreground"}`}>
-          <Icon className="h-4 w-4" />
+    <div className={`rounded-xl border ${border} p-4 transition-all`}>
+      <div className="flex items-start gap-3">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${highlight ? "bg-amber-500/15 text-amber-500" : state.status === "done" ? "bg-emerald-500/10 text-emerald-500" : "bg-muted/40 text-foreground"}`}>
+          <Icon className="h-4.5 w-4.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`font-display text-sm font-semibold tracking-tight ${highlight ? "text-amber-500" : ""}`}>
-              {meta.title}
-            </span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              {highlight && (
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-amber-500">
+                  Final verdict
+                </div>
+              )}
+              <div className={`font-display font-semibold tracking-tight ${highlight ? "text-base text-foreground" : "text-sm"}`}>
+                {meta.title}
+              </div>
+              <div className="text-xs text-muted-foreground">{meta.role}</div>
+            </div>
             <StatusPill status={state.status} />
           </div>
-          <div className="text-xs text-muted-foreground">{meta.role}</div>
         </div>
       </div>
 
       {state.status === "running" && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Working…
+        <div className="mt-4 space-y-2">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted/40">
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/60" />
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Working…
+          </div>
         </div>
       )}
 
       {state.status === "done" && state.output && (
-        <pre className={`mt-3 whitespace-pre-wrap font-sans leading-relaxed ${highlight ? "text-sm text-foreground/90" : "text-xs text-foreground/80 max-h-56 overflow-auto"}`}>
-          {state.output}
-        </pre>
+        <div className={`mt-4 rounded-lg border border-border/60 bg-background/40 p-3 ${highlight ? "" : "max-h-72 overflow-auto"}`}>
+          <AgentMarkdown text={state.output} highlight={highlight} />
+        </div>
       )}
     </div>
   );
 }
+
+function AgentMarkdown({ text, highlight }: { text: string; highlight?: boolean }) {
+  const base = highlight ? "text-sm" : "text-xs";
+  return (
+    <div className={`${base} leading-relaxed text-foreground/85 space-y-2.5`}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => (
+            <h4 className="font-display text-sm font-semibold tracking-tight text-foreground">
+              {children}
+            </h4>
+          ),
+          h2: ({ children }) => (
+            <h4 className="font-display text-sm font-semibold tracking-tight text-foreground">
+              {children}
+            </h4>
+          ),
+          h3: ({ children }) => (
+            <h5 className="text-[11px] font-semibold uppercase tracking-widest text-amber-500">
+              {children}
+            </h5>
+          ),
+          h4: ({ children }) => (
+            <h5 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {children}
+            </h5>
+          ),
+          p: ({ children }) => <p className="leading-relaxed">{children}</p>,
+          strong: ({ children }) => (
+            <strong className="font-semibold text-foreground">{children}</strong>
+          ),
+          em: ({ children }) => <em className="text-foreground/90">{children}</em>,
+          ul: ({ children }) => (
+            <ul className="space-y-1 pl-4 marker:text-amber-500 list-disc">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="space-y-1 pl-4 marker:text-amber-500 list-decimal">{children}</ol>
+          ),
+          li: ({ children }) => <li className="pl-1">{children}</li>,
+          code: ({ children }) => (
+            <code className="rounded bg-muted/60 px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+              {children}
+            </code>
+          ),
+          a: ({ children, href }) => (
+            <a href={href} className="text-primary underline underline-offset-2 hover:opacity-80">
+              {children}
+            </a>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-amber-500/50 pl-3 italic text-foreground/80">
+              {children}
+            </blockquote>
+          ),
+          hr: () => <hr className="border-border/60" />,
+          table: ({ children }) => (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="border-b border-border px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border-b border-border/40 px-2 py-1 align-top">{children}</td>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 
 function StatusPill({ status }: { status: AgentStatus }) {
   if (status === "idle")
