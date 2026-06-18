@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { PageShell, PlaceholderCard } from "@/components/page-shell";
+import { RotateCcw } from "lucide-react";
+import { PageShell } from "@/components/page-shell";
+import { useCosts, type Costs } from "@/contexts/costs-context";
 import { importLoadProfitData } from "@/lib/import-data.functions";
 
 export const Route = createFileRoute("/settings")({
@@ -14,22 +16,74 @@ export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
 
+const FIELDS: Array<{
+  key: keyof Costs;
+  label: string;
+  prefix?: string;
+  suffix: string;
+  hint: string;
+  step: number;
+}> = [
+  { key: "fuelPrice", label: "Fuel price", prefix: "$", suffix: "/gal", hint: "Pump price you're paying for diesel", step: 0.01 },
+  { key: "mpg", label: "Fuel economy", suffix: "mpg", hint: "Loaded average across your fleet", step: 0.1 },
+  { key: "driverPay", label: "Driver pay", prefix: "$", suffix: "/mi", hint: "Loaded + empty per-mile pay", step: 0.01 },
+  { key: "insurance", label: "Insurance", prefix: "$", suffix: "/mi", hint: "Cargo + liability allocated per mile", step: 0.01 },
+  { key: "maintenance", label: "Maintenance", prefix: "$", suffix: "/mi", hint: "Tires, oil, repairs, reserves", step: 0.01 },
+];
+
 function SettingsPage() {
+  const { costs, setCost, reset } = useCosts();
+
+  // Derived: total variable cost per mile (fuel + driver + insurance + maint).
+  const fuelPerMile = costs.fuelPrice / Math.max(costs.mpg, 0.0001);
+  const totalPerMile = fuelPerMile + costs.driverPay + costs.insurance + costs.maintenance;
+
   return (
     <PageShell
       eyebrow="Carrier profile"
       title="Cost Settings"
       description="Dial in your true cost-per-mile. Every recommendation across LoadProfit uses these numbers to compute net margin."
+      actions={
+        <button
+          onClick={reset}
+          className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 h-9 text-xs font-medium hover:bg-accent"
+        >
+          <RotateCcw className="h-3 w-3" /> Reset to defaults
+        </button>
+      }
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <CostCard label="Fuel cost / mile" hint="Diesel ÷ MPG" />
-        <CostCard label="Driver pay / mile" hint="Loaded + empty" />
-        <CostCard label="Maintenance / mile" hint="Tires, oil, repairs" />
-        <CostCard label="Fixed overhead / mile" hint="Insurance, payments, admin" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {FIELDS.map((f) => (
+          <CostInput
+            key={f.key}
+            label={f.label}
+            prefix={f.prefix}
+            suffix={f.suffix}
+            hint={f.hint}
+            step={f.step}
+            value={costs[f.key]}
+            onChange={(v) => setCost(f.key, v)}
+          />
+        ))}
+
+        <div className="rounded-xl border border-primary/40 bg-primary/5 p-5 md:col-span-2 lg:col-span-1">
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-primary">All-in</div>
+          <div className="mt-1 text-xs text-muted-foreground">Variable cost per mile</div>
+          <div className="mt-2 font-display text-3xl font-semibold tracking-tight">
+            ${totalPerMile.toFixed(3)}<span className="text-base text-muted-foreground">/mi</span>
+          </div>
+          <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+            <Row k="Fuel" v={`$${fuelPerMile.toFixed(3)}/mi`} />
+            <Row k="Driver" v={`$${costs.driverPay.toFixed(2)}/mi`} />
+            <Row k="Insurance" v={`$${costs.insurance.toFixed(2)}/mi`} />
+            <Row k="Maintenance" v={`$${costs.maintenance.toFixed(2)}/mi`} />
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            Load Finder re-ranks the moment you change a number.
+          </div>
+        </div>
       </div>
-      <div className="mt-6">
-        <PlaceholderCard label="Cost breakdown form + per-truck profiles." />
-      </div>
+
       <div className="mt-8">
         <DataImportCard />
       </div>
@@ -37,15 +91,40 @@ function SettingsPage() {
   );
 }
 
-function CostCard({ label, hint }: { label: string; hint: string }) {
+function CostInput({
+  label, prefix, suffix, hint, step, value, onChange,
+}: {
+  label: string; prefix?: string; suffix: string; hint: string; step: number;
+  value: number; onChange: (v: number) => void;
+}) {
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <label className="rounded-xl border border-border bg-card p-5 block">
       <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-display font-semibold text-muted-foreground/60">$—</span>
-        <span className="text-xs text-muted-foreground">/mi</span>
+      <div className="mt-2 flex items-baseline gap-1">
+        {prefix && <span className="font-display text-2xl font-semibold text-muted-foreground">{prefix}</span>}
+        <input
+          type="number"
+          step={step}
+          min={0}
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => {
+            const n = parseFloat(e.target.value);
+            onChange(Number.isFinite(n) ? n : 0);
+          }}
+          className="w-28 bg-transparent font-display text-3xl font-semibold tracking-tight text-foreground outline-none focus:ring-2 focus:ring-ring rounded"
+        />
+        <span className="text-xs text-muted-foreground">{suffix}</span>
       </div>
       <div className="mt-1 text-xs text-muted-foreground">{hint}</div>
+    </label>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span>{k}</span>
+      <span className="tabular-nums text-foreground/80">{v}</span>
     </div>
   );
 }
@@ -84,13 +163,7 @@ function DataImportCard() {
         Select a JSON file with <code className="font-mono text-xs">loads</code> and <code className="font-mono text-xs">markets</code> arrays. Existing rows with the same id/city are replaced.
       </p>
       <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
-        <input
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={handleFile}
-          disabled={busy}
-        />
+        <input type="file" accept="application/json,.json" className="hidden" onChange={handleFile} disabled={busy} />
         {busy ? "Importing…" : "Choose JSON file"}
       </label>
       {status && <div className="mt-3 text-sm text-muted-foreground">{status}</div>}

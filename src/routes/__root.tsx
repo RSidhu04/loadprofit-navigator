@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppSidebar } from "../components/app-sidebar";
+import { CostsProvider } from "../contexts/costs-context";
 
 function NotFoundComponent() {
   return (
@@ -116,12 +117,14 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-screen w-full bg-background">
-        <AppSidebar />
-        <div className="flex-1 min-w-0">
-          <Outlet />
+      <CostsProvider>
+        <div className="flex min-h-screen w-full bg-background">
+          <AppSidebar />
+          <div className="flex-1 min-w-0">
+            <Outlet />
+          </div>
         </div>
-      </div>
+      </CostsProvider>
     </QueryClientProvider>
   );
 }
