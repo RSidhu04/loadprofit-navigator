@@ -9,7 +9,7 @@ import { PageShell } from "@/components/page-shell";
 import { useCosts } from "@/contexts/costs-context";
 import { findBestLoads, findCandidates, listOriginCities } from "@/lib/loads.functions";
 // @ts-expect-error - agents.js is a plain JS module
-import { costAgent, marketAgent, riskAgent, finalAgent } from "@/lib/agents";
+import { orchestrator } from "@/lib/agents";
 
 
 
