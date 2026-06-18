@@ -386,19 +386,33 @@ function fmtMoney(n: number, digits = 2) {
   })}`;
 }
 
-type AiState = {
-  loading: boolean;
-  error?: string;
-  result?: { final: string; reports: { cost: string; market: string; risk: string } };
+type AgentKey = "cost" | "market" | "risk" | "final";
+type AgentStatus = "idle" | "running" | "done" | "error";
+type AgentState = { status: AgentStatus; output?: string };
+
+const AGENT_META: Record<AgentKey, { title: string; role: string; icon: typeof DollarSign }> = {
+  cost: { title: "Cost Analyst", role: "Most financially efficient picks", icon: DollarSign },
+  market: { title: "Market Analyst", role: "Reload risk & destination strength", icon: TrendingUp },
+  risk: { title: "Risk Officer", role: "Compliance, hazmat, tight windows", icon: ShieldAlert },
+  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Workflow },
 };
 
-function AiPanel({ state, canRun, onRun }: { state: AiState; canRun: boolean; onRun: () => void }) {
+function AiPanel({
+  agents, started, error, canRun, running, onRun,
+}: {
+  agents: Record<AgentKey, AgentState>;
+  started: boolean;
+  error?: string;
+  canRun: boolean;
+  running: boolean;
+  onRun: () => void;
+}) {
   return (
     <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-500">
-            <Sparkles className="h-3.5 w-3.5" /> AI dispatch room
+            <Sparkles className="h-3.5 w-3.5" /> Agent activity
           </div>
           <h3 className="mt-1 font-display text-lg font-semibold tracking-tight">
             Multi-agent recommendation
@@ -413,47 +427,86 @@ function AiPanel({ state, canRun, onRun }: { state: AiState; canRun: boolean; on
           onClick={onRun}
           disabled={!canRun}
         >
-          <Sparkles className="h-4 w-4" />
-          {state.loading ? "Agents thinking…" : "Find Best Load"}
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {running ? "Agents thinking…" : "Find Best Load"}
         </button>
       </div>
 
-      {state.error && (
+      {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.result && (
-        <div className="mt-5 grid gap-4">
-          <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
-            <div className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">
-              Orchestrator decision
-            </div>
-            <pre className="whitespace-pre-wrap font-sans text-sm text-foreground/90 leading-relaxed">
-              {state.result.final}
-            </pre>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <AgentReport title="Cost Analyst" body={state.result.reports.cost} />
-            <AgentReport title="Market Analyst" body={state.result.reports.market} />
-            <AgentReport title="Risk Officer" body={state.result.reports.risk} />
-          </div>
+      {started && (
+        <div className="mt-5 grid gap-3">
+          <AgentCard agentKey="cost" state={agents.cost} />
+          <AgentCard agentKey="market" state={agents.market} />
+          <AgentCard agentKey="risk" state={agents.risk} />
+          <AgentCard agentKey="final" state={agents.final} highlight />
         </div>
       )}
     </div>
   );
 }
 
-function AgentReport({ title, body }: { title: string; body: string }) {
+function AgentCard({
+  agentKey, state, highlight,
+}: {
+  agentKey: AgentKey;
+  state: AgentState;
+  highlight?: boolean;
+}) {
+  const meta = AGENT_META[agentKey];
+  const Icon = meta.icon;
+  const border = highlight
+    ? "border-amber-500/60 bg-amber-500/5"
+    : state.status === "done"
+      ? "border-emerald-500/30 bg-card/60"
+      : state.status === "running"
+        ? "border-primary/40 bg-primary/5"
+        : "border-border bg-card/40";
+
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
-        {title}
+    <div className={`rounded-lg border ${border} p-4 transition-colors`}>
+      <div className="flex items-center gap-2.5">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-md ${highlight ? "bg-amber-500/15 text-amber-500" : "bg-muted/40 text-foreground"}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`font-display text-sm font-semibold tracking-tight ${highlight ? "text-amber-500" : ""}`}>
+              {meta.title}
+            </span>
+            <StatusPill status={state.status} />
+          </div>
+          <div className="text-xs text-muted-foreground">{meta.role}</div>
+        </div>
       </div>
-      <pre className="whitespace-pre-wrap font-sans text-xs text-foreground/80 leading-relaxed max-h-64 overflow-auto">
-        {body}
-      </pre>
+
+      {state.status === "running" && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Working…
+        </div>
+      )}
+
+      {state.status === "done" && state.output && (
+        <pre className={`mt-3 whitespace-pre-wrap font-sans leading-relaxed ${highlight ? "text-sm text-foreground/90" : "text-xs text-foreground/80 max-h-56 overflow-auto"}`}>
+          {state.output}
+        </pre>
+      )}
     </div>
   );
 }
+
+function StatusPill({ status }: { status: AgentStatus }) {
+  if (status === "idle")
+    return <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">Queued</span>;
+  if (status === "running")
+    return <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-primary"><Loader2 className="h-3 w-3 animate-spin" />Running</span>;
+  if (status === "done")
+    return <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-emerald-500"><CheckCircle2 className="h-3 w-3" />Done</span>;
+  return <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-destructive">Error</span>;
+}
+
