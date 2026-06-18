@@ -9,7 +9,7 @@ import { PageShell } from "@/components/page-shell";
 import { useCosts } from "@/contexts/costs-context";
 import { findBestLoads, findCandidates, listOriginCities } from "@/lib/loads.functions";
 // @ts-expect-error - agents.js is a plain JS module
-import { costAgent, marketAgent, riskAgent, finalAgent } from "@/lib/agents";
+import { orchestrator } from "@/lib/agents";
 
 
 
@@ -56,10 +56,11 @@ function LoadFinder() {
   const findFn = useServerFn(findBestLoads);
   const candidatesFn = useServerFn(findCandidates);
 
-  type AgentKey = "cost" | "market" | "risk" | "final";
-  type AgentStatus = "idle" | "running" | "done" | "error";
+  type AgentKey = "router" | "cost" | "market" | "risk" | "final";
+  type AgentStatus = "idle" | "running" | "done" | "error" | "skipped";
   type AgentState = { status: AgentStatus; output?: string };
   const initialAgents: Record<AgentKey, AgentState> = {
+    router: { status: "idle" },
     cost: { status: "idle" },
     market: { status: "idle" },
     risk: { status: "idle" },
@@ -69,6 +70,7 @@ function LoadFinder() {
   const [aiError, setAiError] = useState<string | undefined>();
   const [aiRunning, setAiRunning] = useState(false);
   const [aiStarted, setAiStarted] = useState(false);
+  const [query, setQuery] = useState<string>("Find the best load from my current location");
 
 
   const citiesQuery = useQuery({
@@ -127,23 +129,31 @@ function LoadFinder() {
         return;
       }
 
-      // Kick all three specialists at once; each updates its own card the moment it returns.
-      const markRunning = (k: AgentKey) =>
-        setAgents((s) => ({ ...s, [k]: { status: "running" } }));
-      const markDone = (k: AgentKey, output: string) =>
-        setAgents((s) => ({ ...s, [k]: { status: "done", output } }));
+      // Step 1 — routing is in-flight.
+      setAgents((s) => ({
+        ...s,
+        router: { status: "running" },
+        cost: { status: "running" },
+        market: { status: "running" },
+        risk: { status: "running" },
+        final: { status: "running" },
+      }));
 
-      markRunning("cost"); markRunning("market"); markRunning("risk");
+      const result = await orchestrator(query, candidates, selected, costs);
+      const used = new Set<string>(result.agentsUsed);
 
-      const costP = costAgent(candidates).then((t: string) => { markDone("cost", t); return t; });
-      const marketP = marketAgent(candidates).then((t: string) => { markDone("market", t); return t; });
-      const riskP = riskAgent(candidates).then((t: string) => { markDone("risk", t); return t; });
+      const statusFor = (key: "COST" | "MARKET" | "RISK"): AgentState =>
+        used.has(key)
+          ? { status: "done", output: result.findings[key] }
+          : { status: "skipped", output: "Not needed for this query." };
 
-      const [cost, market, risk] = await Promise.all([costP, marketP, riskP]);
-
-      markRunning("final");
-      const finalText = await finalAgent(candidates, selected.city, { cost, market, risk });
-      markDone("final", finalText);
+      setAgents({
+        router: { status: "done", output: result.routingReason || "Routed query to specialists." },
+        cost: statusFor("COST"),
+        market: statusFor("MARKET"),
+        risk: statusFor("RISK"),
+        final: { status: "done", output: result.finalRecommendation },
+      });
     } catch (err) {
       setAiError((err as Error).message);
     } finally {
@@ -206,6 +216,8 @@ function LoadFinder() {
         canRun={!!selected && !aiRunning}
         running={aiRunning}
         onRun={runAgents}
+        query={query}
+        onQueryChange={setQuery}
       />
 
 
@@ -389,19 +401,20 @@ function fmtMoney(n: number, digits = 2) {
   })}`;
 }
 
-type AgentKey = "cost" | "market" | "risk" | "final";
-type AgentStatus = "idle" | "running" | "done" | "error";
+type AgentKey = "router" | "cost" | "market" | "risk" | "final";
+type AgentStatus = "idle" | "running" | "done" | "error" | "skipped";
 type AgentState = { status: AgentStatus; output?: string };
 
 const AGENT_META: Record<AgentKey, { title: string; role: string; icon: typeof DollarSign }> = {
+  router: { title: "Router", role: "Decides which specialists to invoke", icon: Workflow },
   cost: { title: "Cost Analyst", role: "Most financially efficient picks", icon: DollarSign },
   market: { title: "Market Analyst", role: "Reload risk & destination strength", icon: TrendingUp },
   risk: { title: "Risk Officer", role: "Compliance, hazmat, tight windows", icon: ShieldAlert },
-  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Workflow },
+  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Sparkles },
 };
 
 function AiPanel({
-  agents, started, error, canRun, running, onRun,
+  agents, started, error, canRun, running, onRun, query, onQueryChange,
 }: {
   agents: Record<AgentKey, AgentState>;
   started: boolean;
@@ -409,6 +422,8 @@ function AiPanel({
   canRun: boolean;
   running: boolean;
   onRun: () => void;
+  query: string;
+  onQueryChange: (v: string) => void;
 }) {
   return (
     <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
@@ -421,7 +436,7 @@ function AiPanel({
             Multi-agent recommendation
           </h3>
           <p className="text-sm text-muted-foreground">
-            Cost · Market · Risk specialists review the top 15 candidates within 300 mi, then the
+            The Router decides which specialists (Cost · Market · Risk) to invoke, then the
             Orchestrator picks the single best load.
           </p>
         </div>
@@ -435,6 +450,19 @@ function AiPanel({
         </button>
       </div>
 
+      <label className="mt-4 flex flex-col gap-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Your query
+        </span>
+        <textarea
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          rows={2}
+          placeholder="e.g. Find the best load, or 'what if fuel rises 10%', or 'loads ending in strong markets'"
+          className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+        />
+      </label>
+
       {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
           {error}
@@ -443,6 +471,7 @@ function AiPanel({
 
       {started && (
         <div className="mt-5 space-y-4">
+          <AgentCard agentKey="router" state={agents.router} />
           <div className="grid gap-3 md:grid-cols-3">
             <AgentCard agentKey="cost" state={agents.cost} />
             <AgentCard agentKey="market" state={agents.market} />
@@ -505,6 +534,12 @@ function AgentCard({
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             Working…
           </div>
+        </div>
+      )}
+
+      {state.status === "skipped" && (
+        <div className="mt-3 text-xs italic text-muted-foreground">
+          {state.output || "Not needed for this query."}
         </div>
       )}
 
@@ -601,6 +636,8 @@ function StatusPill({ status }: { status: AgentStatus }) {
     return <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-primary"><Loader2 className="h-3 w-3 animate-spin" />Running</span>;
   if (status === "done")
     return <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-emerald-500"><CheckCircle2 className="h-3 w-3" />Done</span>;
+  if (status === "skipped")
+    return <span className="rounded-md border border-border bg-muted/30 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">Skipped</span>;
   return <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-destructive">Error</span>;
 }
 
