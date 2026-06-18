@@ -216,6 +216,8 @@ function LoadFinder() {
         canRun={!!selected && !aiRunning}
         running={aiRunning}
         onRun={runAgents}
+        query={query}
+        onQueryChange={setQuery}
       />
 
 
