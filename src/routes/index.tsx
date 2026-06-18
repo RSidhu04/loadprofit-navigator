@@ -56,10 +56,11 @@ function LoadFinder() {
   const findFn = useServerFn(findBestLoads);
   const candidatesFn = useServerFn(findCandidates);
 
-  type AgentKey = "cost" | "market" | "risk" | "final";
-  type AgentStatus = "idle" | "running" | "done" | "error";
+  type AgentKey = "router" | "cost" | "market" | "risk" | "final";
+  type AgentStatus = "idle" | "running" | "done" | "error" | "skipped";
   type AgentState = { status: AgentStatus; output?: string };
   const initialAgents: Record<AgentKey, AgentState> = {
+    router: { status: "idle" },
     cost: { status: "idle" },
     market: { status: "idle" },
     risk: { status: "idle" },
@@ -69,6 +70,7 @@ function LoadFinder() {
   const [aiError, setAiError] = useState<string | undefined>();
   const [aiRunning, setAiRunning] = useState(false);
   const [aiStarted, setAiStarted] = useState(false);
+  const [query, setQuery] = useState<string>("Find the best load from my current location");
 
 
   const citiesQuery = useQuery({
