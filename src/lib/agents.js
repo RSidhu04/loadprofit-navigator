@@ -118,16 +118,11 @@ export async function riskAgent(candidates) {
 }
 
 /**
- * Orchestrator — fans out to the three specialists in parallel, then
- * makes a synthesis call that picks the single best load.
+ * Final synthesis step. Takes the three specialist reports and picks
+ * the single best load. Split out from orchestrator() so the UI can
+ * stream per-agent progress.
  */
-export async function orchestrator(candidates, location) {
-  const [costReport, marketReport, riskReport] = await Promise.all([
-    costAgent(candidates),
-    marketAgent(candidates),
-    riskAgent(candidates),
-  ]);
-
+export async function finalAgent(candidates, location, reports) {
   const system =
     "You are the Dispatch Orchestrator. Given the Cost Analyst, Market " +
     "Analyst, and Risk Officer reports below, pick the single best load " +
@@ -142,25 +137,34 @@ export async function orchestrator(candidates, location) {
     formatCandidates(candidates),
     ``,
     `--- COST ANALYST REPORT ---`,
-    costReport,
+    reports.cost,
     ``,
     `--- MARKET ANALYST REPORT ---`,
-    marketReport,
+    reports.market,
     ``,
     `--- RISK OFFICER REPORT ---`,
-    riskReport,
+    reports.risk,
   ].join("\n");
 
   try {
-    const finalText = await callClaude(system, userMessage);
-    return {
-      final: finalText,
-      reports: { cost: costReport, market: marketReport, risk: riskReport },
-    };
+    return await callClaude(system, userMessage);
   } catch (err) {
-    return {
-      final: `Orchestrator error: ${err.message}`,
-      reports: { cost: costReport, market: marketReport, risk: riskReport },
-    };
+    return `Orchestrator error: ${err.message}`;
   }
 }
+
+/**
+ * Orchestrator — fans out to the three specialists in parallel, then
+ * makes a synthesis call that picks the single best load.
+ */
+export async function orchestrator(candidates, location) {
+  const [cost, market, risk] = await Promise.all([
+    costAgent(candidates),
+    marketAgent(candidates),
+    riskAgent(candidates),
+  ]);
+  const reports = { cost, market, risk };
+  const final = await finalAgent(candidates, location, reports);
+  return { final, reports };
+}
+

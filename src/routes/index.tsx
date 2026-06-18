@@ -2,12 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
-import { MapPin, Search, Sparkles, TrendingUp, Truck } from "lucide-react";
+import { CheckCircle2, DollarSign, Loader2, MapPin, Search, ShieldAlert, Sparkles, TrendingUp, Truck, Workflow } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { useCosts } from "@/contexts/costs-context";
 import { findBestLoads, findCandidates, listOriginCities } from "@/lib/loads.functions";
 // @ts-expect-error - agents.js is a plain JS module
-import { orchestrator } from "@/lib/agents";
+import { costAgent, marketAgent, riskAgent, finalAgent } from "@/lib/agents";
+
 
 
 export const Route = createFileRoute("/")({
@@ -52,11 +53,20 @@ function LoadFinder() {
   const findFn = useServerFn(findBestLoads);
   const candidatesFn = useServerFn(findCandidates);
 
-  const [aiState, setAiState] = useState<{
-    loading: boolean;
-    error?: string;
-    result?: { final: string; reports: { cost: string; market: string; risk: string } };
-  }>({ loading: false });
+  type AgentKey = "cost" | "market" | "risk" | "final";
+  type AgentStatus = "idle" | "running" | "done" | "error";
+  type AgentState = { status: AgentStatus; output?: string };
+  const initialAgents: Record<AgentKey, AgentState> = {
+    cost: { status: "idle" },
+    market: { status: "idle" },
+    risk: { status: "idle" },
+    final: { status: "idle" },
+  };
+  const [agents, setAgents] = useState<Record<AgentKey, AgentState>>(initialAgents);
+  const [aiError, setAiError] = useState<string | undefined>();
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiStarted, setAiStarted] = useState(false);
+
 
   const citiesQuery = useQuery({
     queryKey: ["origin-cities"],
@@ -100,21 +110,44 @@ function LoadFinder() {
 
   async function runAgents() {
     if (!selected) return;
-    setAiState({ loading: true });
+    setAiError(undefined);
+    setAiStarted(true);
+    setAiRunning(true);
+    setAgents(initialAgents);
     try {
       const { results: candidates } = await candidatesFn({
         data: { currentLat: selected.lat, currentLng: selected.lng, costs, radiusMiles: 300, limit: 15 },
       });
       if (!candidates.length) {
-        setAiState({ loading: false, error: "No loads found within 300 miles." });
+        setAiError("No loads found within 300 miles.");
+        setAiRunning(false);
         return;
       }
-      const result = await orchestrator(candidates, selected.city);
-      setAiState({ loading: false, result });
+
+      // Kick all three specialists at once; each updates its own card the moment it returns.
+      const markRunning = (k: AgentKey) =>
+        setAgents((s) => ({ ...s, [k]: { status: "running" } }));
+      const markDone = (k: AgentKey, output: string) =>
+        setAgents((s) => ({ ...s, [k]: { status: "done", output } }));
+
+      markRunning("cost"); markRunning("market"); markRunning("risk");
+
+      const costP = costAgent(candidates).then((t: string) => { markDone("cost", t); return t; });
+      const marketP = marketAgent(candidates).then((t: string) => { markDone("market", t); return t; });
+      const riskP = riskAgent(candidates).then((t: string) => { markDone("risk", t); return t; });
+
+      const [cost, market, risk] = await Promise.all([costP, marketP, riskP]);
+
+      markRunning("final");
+      const finalText = await finalAgent(candidates, selected.city, { cost, market, risk });
+      markDone("final", finalText);
     } catch (err) {
-      setAiState({ loading: false, error: (err as Error).message });
+      setAiError((err as Error).message);
+    } finally {
+      setAiRunning(false);
     }
   }
+
 
 
   return (
@@ -164,10 +197,14 @@ function LoadFinder() {
       {top && <TopPickCard pick={top} />}
 
       <AiPanel
-        state={aiState}
-        canRun={!!selected && !aiState.loading}
+        agents={agents}
+        started={aiStarted}
+        error={aiError}
+        canRun={!!selected && !aiRunning}
+        running={aiRunning}
         onRun={runAgents}
       />
+
 
 
       <div className="mt-6">
@@ -349,19 +386,33 @@ function fmtMoney(n: number, digits = 2) {
   })}`;
 }
 
-type AiState = {
-  loading: boolean;
-  error?: string;
-  result?: { final: string; reports: { cost: string; market: string; risk: string } };
+type AgentKey = "cost" | "market" | "risk" | "final";
+type AgentStatus = "idle" | "running" | "done" | "error";
+type AgentState = { status: AgentStatus; output?: string };
+
+const AGENT_META: Record<AgentKey, { title: string; role: string; icon: typeof DollarSign }> = {
+  cost: { title: "Cost Analyst", role: "Most financially efficient picks", icon: DollarSign },
+  market: { title: "Market Analyst", role: "Reload risk & destination strength", icon: TrendingUp },
+  risk: { title: "Risk Officer", role: "Compliance, hazmat, tight windows", icon: ShieldAlert },
+  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Workflow },
 };
 
-function AiPanel({ state, canRun, onRun }: { state: AiState; canRun: boolean; onRun: () => void }) {
+function AiPanel({
+  agents, started, error, canRun, running, onRun,
+}: {
+  agents: Record<AgentKey, AgentState>;
+  started: boolean;
+  error?: string;
+  canRun: boolean;
+  running: boolean;
+  onRun: () => void;
+}) {
   return (
     <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-500">
-            <Sparkles className="h-3.5 w-3.5" /> AI dispatch room
+            <Sparkles className="h-3.5 w-3.5" /> Agent activity
           </div>
           <h3 className="mt-1 font-display text-lg font-semibold tracking-tight">
             Multi-agent recommendation
@@ -376,47 +427,86 @@ function AiPanel({ state, canRun, onRun }: { state: AiState; canRun: boolean; on
           onClick={onRun}
           disabled={!canRun}
         >
-          <Sparkles className="h-4 w-4" />
-          {state.loading ? "Agents thinking…" : "Find Best Load"}
+          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {running ? "Agents thinking…" : "Find Best Load"}
         </button>
       </div>
 
-      {state.error && (
+      {error && (
         <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-          {state.error}
+          {error}
         </div>
       )}
 
-      {state.result && (
-        <div className="mt-5 grid gap-4">
-          <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
-            <div className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">
-              Orchestrator decision
-            </div>
-            <pre className="whitespace-pre-wrap font-sans text-sm text-foreground/90 leading-relaxed">
-              {state.result.final}
-            </pre>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <AgentReport title="Cost Analyst" body={state.result.reports.cost} />
-            <AgentReport title="Market Analyst" body={state.result.reports.market} />
-            <AgentReport title="Risk Officer" body={state.result.reports.risk} />
-          </div>
+      {started && (
+        <div className="mt-5 grid gap-3">
+          <AgentCard agentKey="cost" state={agents.cost} />
+          <AgentCard agentKey="market" state={agents.market} />
+          <AgentCard agentKey="risk" state={agents.risk} />
+          <AgentCard agentKey="final" state={agents.final} highlight />
         </div>
       )}
     </div>
   );
 }
 
-function AgentReport({ title, body }: { title: string; body: string }) {
+function AgentCard({
+  agentKey, state, highlight,
+}: {
+  agentKey: AgentKey;
+  state: AgentState;
+  highlight?: boolean;
+}) {
+  const meta = AGENT_META[agentKey];
+  const Icon = meta.icon;
+  const border = highlight
+    ? "border-amber-500/60 bg-amber-500/5"
+    : state.status === "done"
+      ? "border-emerald-500/30 bg-card/60"
+      : state.status === "running"
+        ? "border-primary/40 bg-primary/5"
+        : "border-border bg-card/40";
+
   return (
-    <div className="rounded-lg border border-border bg-card/60 p-3">
-      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
-        {title}
+    <div className={`rounded-lg border ${border} p-4 transition-colors`}>
+      <div className="flex items-center gap-2.5">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-md ${highlight ? "bg-amber-500/15 text-amber-500" : "bg-muted/40 text-foreground"}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`font-display text-sm font-semibold tracking-tight ${highlight ? "text-amber-500" : ""}`}>
+              {meta.title}
+            </span>
+            <StatusPill status={state.status} />
+          </div>
+          <div className="text-xs text-muted-foreground">{meta.role}</div>
+        </div>
       </div>
-      <pre className="whitespace-pre-wrap font-sans text-xs text-foreground/80 leading-relaxed max-h-64 overflow-auto">
-        {body}
-      </pre>
+
+      {state.status === "running" && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Working…
+        </div>
+      )}
+
+      {state.status === "done" && state.output && (
+        <pre className={`mt-3 whitespace-pre-wrap font-sans leading-relaxed ${highlight ? "text-sm text-foreground/90" : "text-xs text-foreground/80 max-h-56 overflow-auto"}`}>
+          {state.output}
+        </pre>
+      )}
     </div>
   );
 }
+
+function StatusPill({ status }: { status: AgentStatus }) {
+  if (status === "idle")
+    return <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-muted-foreground">Queued</span>;
+  if (status === "running")
+    return <span className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-primary"><Loader2 className="h-3 w-3 animate-spin" />Running</span>;
+  if (status === "done")
+    return <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-emerald-500"><CheckCircle2 className="h-3 w-3" />Done</span>;
+  return <span className="rounded-md border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[10px] uppercase tracking-widest text-destructive">Error</span>;
+}
+
