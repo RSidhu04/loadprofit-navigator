@@ -197,10 +197,14 @@ function LoadFinder() {
       {top && <TopPickCard pick={top} />}
 
       <AiPanel
-        state={aiState}
-        canRun={!!selected && !aiState.loading}
+        agents={agents}
+        started={aiStarted}
+        error={aiError}
+        canRun={!!selected && !aiRunning}
+        running={aiRunning}
         onRun={runAgents}
       />
+
 
 
       <div className="mt-6">
