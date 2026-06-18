@@ -537,6 +537,12 @@ function AgentCard({
         </div>
       )}
 
+      {state.status === "skipped" && (
+        <div className="mt-3 text-xs italic text-muted-foreground">
+          {state.output || "Not needed for this query."}
+        </div>
+      )}
+
       {state.status === "done" && state.output && (
         <div className={`mt-4 rounded-lg border border-border/60 bg-background/40 p-3 ${highlight ? "" : "max-h-72 overflow-auto"}`}>
           <AgentMarkdown text={state.output} highlight={highlight} />
