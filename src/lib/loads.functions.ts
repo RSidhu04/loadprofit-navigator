@@ -108,6 +108,36 @@ export const findBestLoads = createServerFn({ method: "POST" })
     };
   });
 
+// Candidates for the AI agent pipeline: loads within RADIUS miles of the
+// driver, scored, sorted by net $/mi, top N returned.
+export const findCandidates = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { currentLat: number; currentLng: number; costs: Costs; radiusMiles?: number; limit?: number }) => input,
+  )
+  .handler(async ({ data }) => {
+    const supabase = await getSupabase();
+    const PAGE = 1000;
+    const rows: LoadRow[] = [];
+    let from = 0;
+    while (true) {
+      const { data: page, error } = await supabase.from("loads").select("*").range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      if (!page || page.length === 0) break;
+      rows.push(...(page as LoadRow[]));
+      if (page.length < PAGE) break;
+      from += PAGE;
+      if (rows.length > 200000) break;
+    }
+    const radius = data.radiusMiles ?? 300;
+    const limit = data.limit ?? 15;
+    const scored = rows
+      .map((load) => ({ load, score: scoreLoad(load, data.currentLat, data.currentLng, data.costs) }))
+      .filter((r) => r.score.deadheadIn <= radius);
+    scored.sort((a, b) => b.score.netPerMile - a.score.netPerMile);
+    return { total: scored.length, results: scored.slice(0, limit) };
+  });
+
+
 // Markets list (top N by exit_score).
 export const listTopMarkets = createServerFn({ method: "GET" })
   .inputValidator((input: { limit?: number } | undefined) => input ?? {})
