@@ -3,49 +3,30 @@
  * ---------
  * Multi-agent orchestration over a candidate set of pre-scored loads.
  *
- * Each agent is a single Anthropic API call with a distinct system prompt.
+ * Each agent is a single AI call with a distinct system prompt.
  * The orchestrator runs the three specialists in parallel, then makes a
  * final synthesis call that picks the single best load.
  *
- * NOTE: All four functions hit the Anthropic API directly via fetch.
- *       The runtime is expected to inject auth; we do not attach a key here.
+ * Calls are proxied through /api/agent so the browser never touches a
+ * provider API directly (CORS) and the gateway key stays server-side.
  */
 
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 1000;
+const AGENT_PROXY_URL = "/api/agent";
 
-/** Pull the plain-text body out of an Anthropic /v1/messages response. */
-function parseText(data) {
-  if (!data || !Array.isArray(data.content)) return "";
-  return data.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
-}
-
-/** Single Anthropic call. Returns the joined text body. */
-async function callClaude(systemPrompt, userMessage) {
-  const res = await fetch(ANTHROPIC_URL, {
+/** Single AI call. Returns the joined text body. */
+async function callAgent(systemPrompt, userMessage) {
+  const res = await fetch(AGENT_PROXY_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }],
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system: systemPrompt, user: userMessage }),
   });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Anthropic ${res.status}: ${text.slice(0, 200)}`);
+    throw new Error(data?.error || `Agent proxy ${res.status}`);
   }
-  const data = await res.json();
-  return parseText(data);
+  return data.text || "";
 }
+
 
 /**
  * Render the candidate set as a compact, model-friendly table so every
@@ -84,7 +65,7 @@ export async function costAgent(candidates) {
     "deadhead-out miles. Do NOT recalculate — interpret. Identify the 3 " +
     "most financially efficient loads and explain why in one line each.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Cost agent error: ${err.message}`;
   }
@@ -98,7 +79,7 @@ export async function marketAgent(candidates) {
     "high-paying loads that drop the truck in a weak market (score < 0.45), " +
     "and highlight loads ending in strong hubs. Reason about reload risk.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Market agent error: ${err.message}`;
   }
@@ -111,7 +92,7 @@ export async function riskAgent(candidates) {
     "requirements (hazmat, team, liftgate) or tight delivery windows. " +
     "Note added cost or difficulty.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Risk agent error: ${err.message}`;
   }
@@ -147,7 +128,7 @@ export async function finalAgent(candidates, location, reports) {
   ].join("\n");
 
   try {
-    return await callClaude(system, userMessage);
+    return await callAgent(system, userMessage);
   } catch (err) {
     return `Orchestrator error: ${err.message}`;
   }
