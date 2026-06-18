@@ -50,6 +50,13 @@ function LoadFinder() {
 
   const citiesFn = useServerFn(listOriginCities);
   const findFn = useServerFn(findBestLoads);
+  const candidatesFn = useServerFn(findCandidates);
+
+  const [aiState, setAiState] = useState<{
+    loading: boolean;
+    error?: string;
+    result?: { final: string; reports: { cost: string; market: string; risk: string } };
+  }>({ loading: false });
 
   const citiesQuery = useQuery({
     queryKey: ["origin-cities"],
