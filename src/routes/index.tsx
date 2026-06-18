@@ -53,11 +53,20 @@ function LoadFinder() {
   const findFn = useServerFn(findBestLoads);
   const candidatesFn = useServerFn(findCandidates);
 
-  const [aiState, setAiState] = useState<{
-    loading: boolean;
-    error?: string;
-    result?: { final: string; reports: { cost: string; market: string; risk: string } };
-  }>({ loading: false });
+  type AgentKey = "cost" | "market" | "risk" | "final";
+  type AgentStatus = "idle" | "running" | "done" | "error";
+  type AgentState = { status: AgentStatus; output?: string };
+  const initialAgents: Record<AgentKey, AgentState> = {
+    cost: { status: "idle" },
+    market: { status: "idle" },
+    risk: { status: "idle" },
+    final: { status: "idle" },
+  };
+  const [agents, setAgents] = useState<Record<AgentKey, AgentState>>(initialAgents);
+  const [aiError, setAiError] = useState<string | undefined>();
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiStarted, setAiStarted] = useState(false);
+
 
   const citiesQuery = useQuery({
     queryKey: ["origin-cities"],
