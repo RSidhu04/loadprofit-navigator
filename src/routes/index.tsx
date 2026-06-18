@@ -98,6 +98,25 @@ function LoadFinder() {
     ? results.reduce((sum, r) => sum + r.score.deadheadIn + r.score.deadheadOut, 0) / results.length
     : 0;
 
+  async function runAgents() {
+    if (!selected) return;
+    setAiState({ loading: true });
+    try {
+      const { results: candidates } = await candidatesFn({
+        data: { currentLat: selected.lat, currentLng: selected.lng, costs, radiusMiles: 300, limit: 15 },
+      });
+      if (!candidates.length) {
+        setAiState({ loading: false, error: "No loads found within 300 miles." });
+        return;
+      }
+      const result = await orchestrator(candidates, selected.city);
+      setAiState({ loading: false, result });
+    } catch (err) {
+      setAiState({ loading: false, error: (err as Error).message });
+    }
+  }
+
+
   return (
     <PageShell
       eyebrow="Recommendation engine"
