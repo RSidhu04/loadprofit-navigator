@@ -52,20 +52,29 @@ function getSupabase() {
 }
 
 // Distinct list of origin cities (with their lat/lng) for the dropdown.
+// Supabase caps each response at 1000 rows, so we paginate until we've seen
+// every distinct origin.
 export const listOriginCities = createServerFn({ method: "GET" }).handler(async () => {
   const supabase = await getSupabase();
-  const { data, error } = await supabase
-    .from("loads")
-    .select("origin, origin_lat, origin_lng")
-    .order("origin", { ascending: true })
-    .limit(50000);
-  if (error) throw new Error(error.message);
-
+  const PAGE = 1000;
   const seen = new Map<string, { city: string; lat: number; lng: number }>();
-  for (const row of (data ?? []) as Pick<LoadRow, "origin" | "origin_lat" | "origin_lng">[]) {
-    if (!seen.has(row.origin)) {
-      seen.set(row.origin, { city: row.origin, lat: row.origin_lat, lng: row.origin_lng });
+  let from = 0;
+  while (true) {
+    const { data: page, error } = await supabase
+      .from("loads")
+      .select("origin, origin_lat, origin_lng")
+      .order("origin", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!page || page.length === 0) break;
+    for (const row of page as Pick<LoadRow, "origin" | "origin_lat" | "origin_lng">[]) {
+      if (!seen.has(row.origin)) {
+        seen.set(row.origin, { city: row.origin, lat: row.origin_lat, lng: row.origin_lng });
+      }
     }
+    if (page.length < PAGE) break;
+    from += PAGE;
+    if (from > 200000) break;
   }
   return Array.from(seen.values()).sort((a, b) => a.city.localeCompare(b.city));
 });
