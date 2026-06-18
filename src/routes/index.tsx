@@ -401,15 +401,16 @@ function fmtMoney(n: number, digits = 2) {
   })}`;
 }
 
-type AgentKey = "cost" | "market" | "risk" | "final";
-type AgentStatus = "idle" | "running" | "done" | "error";
+type AgentKey = "router" | "cost" | "market" | "risk" | "final";
+type AgentStatus = "idle" | "running" | "done" | "error" | "skipped";
 type AgentState = { status: AgentStatus; output?: string };
 
 const AGENT_META: Record<AgentKey, { title: string; role: string; icon: typeof DollarSign }> = {
+  router: { title: "Router", role: "Decides which specialists to invoke", icon: Workflow },
   cost: { title: "Cost Analyst", role: "Most financially efficient picks", icon: DollarSign },
   market: { title: "Market Analyst", role: "Reload risk & destination strength", icon: TrendingUp },
   risk: { title: "Risk Officer", role: "Compliance, hazmat, tight windows", icon: ShieldAlert },
-  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Workflow },
+  final: { title: "Orchestrator", role: "Final dispatch verdict", icon: Sparkles },
 };
 
 function AiPanel({
