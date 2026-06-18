@@ -14,7 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      loads: {
+        Row: {
+          commodity: string
+          created_at: string
+          dest: string
+          dest_exit_score: number
+          dest_lat: number
+          dest_lng: number
+          equipment: string
+          id: string
+          miles: number
+          origin: string
+          origin_lat: number
+          origin_lng: number
+          pu_date: string
+          rate: number
+          weight: number
+        }
+        Insert: {
+          commodity: string
+          created_at?: string
+          dest: string
+          dest_exit_score: number
+          dest_lat: number
+          dest_lng: number
+          equipment: string
+          id: string
+          miles: number
+          origin: string
+          origin_lat: number
+          origin_lng: number
+          pu_date: string
+          rate: number
+          weight: number
+        }
+        Update: {
+          commodity?: string
+          created_at?: string
+          dest?: string
+          dest_exit_score?: number
+          dest_lat?: number
+          dest_lng?: number
+          equipment?: string
+          id?: string
+          miles?: number
+          origin?: string
+          origin_lat?: number
+          origin_lng?: number
+          pu_date?: string
+          rate?: number
+          weight?: number
+        }
+        Relationships: []
+      }
+      markets: {
+        Row: {
+          avg_rpm: number
+          city: string
+          created_at: string
+          exit_score: number
+          inbound: number
+          lane_balance: number
+          lat: number
+          lng: number
+          outbound: number
+        }
+        Insert: {
+          avg_rpm: number
+          city: string
+          created_at?: string
+          exit_score: number
+          inbound: number
+          lane_balance: number
+          lat: number
+          lng: number
+          outbound: number
+        }
+        Update: {
+          avg_rpm?: number
+          city?: string
+          created_at?: string
+          exit_score?: number
+          inbound?: number
+          lane_balance?: number
+          lat?: number
+          lng?: number
+          outbound?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
