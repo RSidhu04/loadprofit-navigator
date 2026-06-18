@@ -28,6 +28,9 @@ export function PageShell({ eyebrow, title, description, actions, children }: Pa
         </div>
       </header>
       <main className="px-8 py-8">{children}</main>
+      <footer className="border-t border-border px-8 py-6 text-center text-xs text-muted-foreground">
+        Developed by Harshith Bandari
+      </footer>
     </div>
   );
 }
