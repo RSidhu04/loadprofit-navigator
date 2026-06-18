@@ -65,7 +65,7 @@ export async function costAgent(candidates) {
     "deadhead-out miles. Do NOT recalculate — interpret. Identify the 3 " +
     "most financially efficient loads and explain why in one line each.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Cost agent error: ${err.message}`;
   }
@@ -79,7 +79,7 @@ export async function marketAgent(candidates) {
     "high-paying loads that drop the truck in a weak market (score < 0.45), " +
     "and highlight loads ending in strong hubs. Reason about reload risk.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Market agent error: ${err.message}`;
   }
@@ -92,7 +92,7 @@ export async function riskAgent(candidates) {
     "requirements (hazmat, team, liftgate) or tight delivery windows. " +
     "Note added cost or difficulty.";
   try {
-    return await callClaude(system, formatCandidates(candidates));
+    return await callAgent(system, formatCandidates(candidates));
   } catch (err) {
     return `Risk agent error: ${err.message}`;
   }
@@ -128,7 +128,7 @@ export async function finalAgent(candidates, location, reports) {
   ].join("\n");
 
   try {
-    return await callClaude(system, userMessage);
+    return await callAgent(system, userMessage);
   } catch (err) {
     return `Orchestrator error: ${err.message}`;
   }
