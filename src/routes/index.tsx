@@ -163,6 +163,13 @@ function LoadFinder() {
 
       {top && <TopPickCard pick={top} />}
 
+      <AiPanel
+        state={aiState}
+        canRun={!!selected && !aiState.loading}
+        onRun={runAgents}
+      />
+
+
       <div className="mt-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
