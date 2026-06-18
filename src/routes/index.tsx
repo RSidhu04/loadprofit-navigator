@@ -348,3 +348,75 @@ function fmtMoney(n: number, digits = 2) {
     maximumFractionDigits: digits,
   })}`;
 }
+
+type AiState = {
+  loading: boolean;
+  error?: string;
+  result?: { final: string; reports: { cost: string; market: string; risk: string } };
+};
+
+function AiPanel({ state, canRun, onRun }: { state: AiState; canRun: boolean; onRun: () => void }) {
+  return (
+    <div className="mt-6 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/5 via-card to-card p-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-500">
+            <Sparkles className="h-3.5 w-3.5" /> AI dispatch room
+          </div>
+          <h3 className="mt-1 font-display text-lg font-semibold tracking-tight">
+            Multi-agent recommendation
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Cost · Market · Risk specialists review the top 15 candidates within 300 mi, then the
+            Orchestrator picks the single best load.
+          </p>
+        </div>
+        <button
+          className="inline-flex items-center gap-2 h-11 px-5 rounded-md bg-amber-500 text-black text-sm font-semibold hover:opacity-90 transition disabled:opacity-50"
+          onClick={onRun}
+          disabled={!canRun}
+        >
+          <Sparkles className="h-4 w-4" />
+          {state.loading ? "Agents thinking…" : "Find Best Load"}
+        </button>
+      </div>
+
+      {state.error && (
+        <div className="mt-4 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+          {state.error}
+        </div>
+      )}
+
+      {state.result && (
+        <div className="mt-5 grid gap-4">
+          <div className="rounded-lg border border-primary/40 bg-primary/5 p-4">
+            <div className="text-xs font-semibold uppercase tracking-widest text-primary mb-2">
+              Orchestrator decision
+            </div>
+            <pre className="whitespace-pre-wrap font-sans text-sm text-foreground/90 leading-relaxed">
+              {state.result.final}
+            </pre>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <AgentReport title="Cost Analyst" body={state.result.reports.cost} />
+            <AgentReport title="Market Analyst" body={state.result.reports.market} />
+            <AgentReport title="Risk Officer" body={state.result.reports.risk} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentReport({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card/60 p-3">
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5">
+        {title}
+      </div>
+      <pre className="whitespace-pre-wrap font-sans text-xs text-foreground/80 leading-relaxed max-h-64 overflow-auto">
+        {body}
+      </pre>
+    </div>
+  );
+}
