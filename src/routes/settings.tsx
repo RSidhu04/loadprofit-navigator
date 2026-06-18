@@ -142,11 +142,31 @@ function DataImportCard() {
     try {
       const text = await file.text();
       const json = JSON.parse(text);
-      const loads = Array.isArray(json.loads) ? json.loads : [];
-      const markets = Array.isArray(json.markets) ? json.markets : [];
-      setStatus(`Uploading ${loads.length.toLocaleString()} loads and ${markets.length} markets…`);
-      const result = await importFn({ data: { loads, markets } });
-      setStatus(`✓ Imported ${result.loadsInserted.toLocaleString()} loads, ${result.marketsInserted} markets.`);
+      const loads: any[] = Array.isArray(json.loads) ? json.loads : [];
+      const markets: any[] = Array.isArray(json.markets) ? json.markets : [];
+
+      const LOAD_CHUNK = 250;
+      const MARKET_CHUNK = 500;
+      let loadsDone = 0;
+      let marketsDone = 0;
+
+      // Markets first (small)
+      for (let i = 0; i < markets.length; i += MARKET_CHUNK) {
+        const chunk = markets.slice(i, i + MARKET_CHUNK);
+        setStatus(`Uploading markets ${i + chunk.length}/${markets.length}…`);
+        const r = await importFn({ data: { markets: chunk } });
+        marketsDone += r.marketsInserted;
+      }
+
+      // Loads in small chunks so each Worker request stays under CPU budget
+      for (let i = 0; i < loads.length; i += LOAD_CHUNK) {
+        const chunk = loads.slice(i, i + LOAD_CHUNK);
+        setStatus(`Uploading loads ${i + chunk.length}/${loads.length}…`);
+        const r = await importFn({ data: { loads: chunk } });
+        loadsDone += r.loadsInserted;
+      }
+
+      setStatus(`✓ Imported ${loadsDone.toLocaleString()} loads, ${marketsDone} markets.`);
     } catch (err) {
       setStatus(`✗ ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -154,6 +174,7 @@ function DataImportCard() {
       e.target.value = "";
     }
   }
+
 
   return (
     <div className="rounded-xl border border-border bg-card p-6">

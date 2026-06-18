@@ -32,7 +32,7 @@ export const importLoadProfitData = createServerFn({ method: "POST" })
     }
 
     if (data.loads?.length) {
-      const BATCH = 1000;
+      const BATCH = 250;
       for (let i = 0; i < data.loads.length; i += BATCH) {
         const chunk = data.loads.slice(i, i + BATCH);
         const { error } = await supabaseAdmin
@@ -42,6 +42,7 @@ export const importLoadProfitData = createServerFn({ method: "POST" })
         loadsInserted += chunk.length;
       }
     }
+
 
     return { loadsInserted, marketsInserted };
   });
