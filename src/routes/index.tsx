@@ -110,21 +110,44 @@ function LoadFinder() {
 
   async function runAgents() {
     if (!selected) return;
-    setAiState({ loading: true });
+    setAiError(undefined);
+    setAiStarted(true);
+    setAiRunning(true);
+    setAgents(initialAgents);
     try {
       const { results: candidates } = await candidatesFn({
         data: { currentLat: selected.lat, currentLng: selected.lng, costs, radiusMiles: 300, limit: 15 },
       });
       if (!candidates.length) {
-        setAiState({ loading: false, error: "No loads found within 300 miles." });
+        setAiError("No loads found within 300 miles.");
+        setAiRunning(false);
         return;
       }
-      const result = await orchestrator(candidates, selected.city);
-      setAiState({ loading: false, result });
+
+      // Kick all three specialists at once; each updates its own card the moment it returns.
+      const markRunning = (k: AgentKey) =>
+        setAgents((s) => ({ ...s, [k]: { status: "running" } }));
+      const markDone = (k: AgentKey, output: string) =>
+        setAgents((s) => ({ ...s, [k]: { status: "done", output } }));
+
+      markRunning("cost"); markRunning("market"); markRunning("risk");
+
+      const costP = costAgent(candidates).then((t: string) => { markDone("cost", t); return t; });
+      const marketP = marketAgent(candidates).then((t: string) => { markDone("market", t); return t; });
+      const riskP = riskAgent(candidates).then((t: string) => { markDone("risk", t); return t; });
+
+      const [cost, market, risk] = await Promise.all([costP, marketP, riskP]);
+
+      markRunning("final");
+      const finalText = await finalAgent(candidates, selected.city, { cost, market, risk });
+      markDone("final", finalText);
     } catch (err) {
-      setAiState({ loading: false, error: (err as Error).message });
+      setAiError((err as Error).message);
+    } finally {
+      setAiRunning(false);
     }
   }
+
 
 
   return (
